@@ -1,3 +1,4 @@
+const Joi = require("joi");
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
@@ -6,6 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
+app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 const players = [
@@ -155,8 +157,84 @@ const players = [
   }
 ];
 
+const newsUpdates = [];
+
+// Joi validation schema
+const playerSchema = Joi.object({
+  name: Joi.string().required(),
+  number: Joi.number().required(),
+  position: Joi.string().required(),
+  nationality: Joi.string().required(),
+  age: Joi.number().required(),
+  appearances: Joi.number().required(),
+  goals: Joi.number().required(),
+  assists: Joi.number().required(),
+  description: Joi.string().required()
+});
+
+const newsSchema = Joi.object({
+  title: Joi.string().required(),
+  category: Joi.string().required(),
+  date: Joi.string().required(),
+  description: Joi.string().required()
+});
+
+// GET players
 app.get("/api/players", (req, res) => {
   res.json(players);
+});
+
+// POST players
+app.post("/api/players", (req, res) => {
+  const { error } = playerSchema.validate(req.body);
+
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.details[0].message
+    });
+  }
+
+  const newPlayer = {
+    id: players.length + 1,
+    ...req.body
+  };
+
+  players.push(newPlayer);
+
+  res.json({
+    success: true,
+    player: newPlayer
+  });
+});
+
+// GET news
+app.get("/api/news", (req, res) => {
+  res.json(newsUpdates);
+});
+
+// POST news
+app.post("/api/news", (req, res) => {
+  const { error } = newsSchema.validate(req.body);
+
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.details[0].message
+    });
+  }
+
+  const newUpdate = {
+    id: newsUpdates.length + 1,
+    ...req.body
+  };
+
+  newsUpdates.unshift(newUpdate);
+
+  res.json({
+    success: true,
+    update: newUpdate
+  });
 });
 
 app.listen(PORT, () => {
