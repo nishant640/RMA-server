@@ -1,7 +1,9 @@
+require("dotenv").config();
 const Joi = require("joi");
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const mongoose = require("mongoose");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -10,17 +12,32 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.log(err));
+
 // -------- PLAYERS --------
 const players = [/* keep your players array as is */];
 
-// -------- NEWS --------
-const news = [];
+// -------- NEWS MODEL --------
+const newsSchemaMongo = new mongoose.Schema({
+  title: { type: String, required: true },
+  category: { type: String, required: true },
+  date: { type: String, required: true },
+  description: { type: String, required: true },
+  image: { type: String, required: true }
+});
 
+const News = mongoose.model("News", newsSchemaMongo);
+
+// -------- JOI VALIDATION --------
 const newsSchema = Joi.object({
   title: Joi.string().min(3).required(),
   category: Joi.string().min(3).required(),
   date: Joi.string().required(),
-  description: Joi.string().min(10).required()
+  description: Joi.string().min(10).required(),
+  image: Joi.string().uri().required()
 });
 
 // -------- ROUTES --------
@@ -31,12 +48,20 @@ app.get("/api/players", (req, res) => {
 });
 
 // news GET
-app.get("/api/news", (req, res) => {
-  res.json(news);
+app.get("/api/news", async (req, res) => {
+  try {
+    const news = await News.find();
+    res.json(news);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching news"
+    });
+  }
 });
 
 // news POST
-app.post("/api/news", (req, res) => {
+app.post("/api/news", async (req, res) => {
   const { error } = newsSchema.validate(req.body);
 
   if (error) {
@@ -46,31 +71,23 @@ app.post("/api/news", (req, res) => {
     });
   }
 
-  const newNews = {
-    id: news.length ? news[news.length - 1].id + 1 : 1,
-    ...req.body
-  };
+  try {
+    const newNews = await News.create(req.body);
 
-  news.push(newNews);
-
-  res.status(200).json({
-    success: true,
-    news: newNews
-  });
+    res.status(200).json({
+      success: true,
+      news: newNews
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Error creating news item"
+    });
+  }
 });
 
 // news PUT
-app.put("/api/news/:id", (req, res) => {
-  const newsId = parseInt(req.params.id);
-  const index = news.findIndex((item) => item.id === newsId);
-
-  if (index === -1) {
-    return res.status(404).json({
-      success: false,
-      message: "News item not found"
-    });
-  }
-
+app.put("/api/news/:id", async (req, res) => {
   const { error } = newsSchema.validate(req.body);
 
   if (error) {
@@ -80,37 +97,53 @@ app.put("/api/news/:id", (req, res) => {
     });
   }
 
-  news[index] = {
-    id: news[index].id,
-    ...req.body
-  };
+  try {
+    const updatedNews = await News.findByIdAndUpdate(req.params.id, req.body, {
+      new: true
+    });
 
-  res.status(200).json({
-    success: true,
-    news: news[index]
-  });
+    if (!updatedNews) {
+      return res.status(404).json({
+        success: false,
+        message: "News item not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      news: updatedNews
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Error updating news item"
+    });
+  }
 });
 
 // news DELETE
-app.delete("/api/news/:id", (req, res) => {
-  const newsId = parseInt(req.params.id);
-  const index = news.findIndex((item) => item.id === newsId);
+app.delete("/api/news/:id", async (req, res) => {
+  try {
+    const deletedNews = await News.findByIdAndDelete(req.params.id);
 
-  if (index === -1) {
-    return res.status(404).json({
+    if (!deletedNews) {
+      return res.status(404).json({
+        success: false,
+        message: "News item not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "News item deleted successfully",
+      news: deletedNews
+    });
+  } catch (err) {
+    res.status(500).json({
       success: false,
-      message: "News item not found"
+      message: "Error deleting news item"
     });
   }
-
-  const deletedNews = news[index];
-  news.splice(index, 1);
-
-  res.status(200).json({
-    success: true,
-    message: "News item deleted successfully",
-    news: deletedNews
-  });
 });
 
 app.listen(PORT, () => {
